@@ -2,9 +2,9 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import admin from 'firebase-admin';
 import cors from 'cors';
-import dotenv from 'dotenv';
 
-dotenv.config();
+import 'dotenv/config';
+
 
 const app = express();
 const port = process.env.PORT || 10000;
