@@ -1,59 +1,49 @@
 import express from 'express';
 import cors from 'cors';
 import admin from 'firebase-admin';
+import axios from 'axios';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Inicializa Firebase Admin
 admin.initializeApp({
   credential: admin.credential.applicationDefault()
 });
 
-// Rota do webhook
 app.post('/api/notificacoes', async (req, res) => {
   const body = req.body;
 
-  console.log('📩 Webhook recebido:', JSON.stringify(body, null, 2));
+  console.log('🔔 Webhook recebido:', JSON.stringify(body, null, 2));
 
   try {
-    const id = body?.data?.id;
-    const tipo = body?.type;
+    if (body.type === 'payment' || body.type === 'preapproval') {
+      const id = body.data.id;
 
-    if (!id || !tipo) {
-      console.warn('❗ Payload incompleto.');
-      return res.sendStatus(400);
-    }
-
-    if (tipo === 'payment') {
-      // MOCK para testes sandbox — remove axios.get
-      const response = {
-        data: {
-          payer: {
-            email: `teste-${id}@ascendaup.com`,
-            first_name: `Usuário ${id}`
+      const response = await axios.get(
+        `https://api.mercadopago.com/v1/payments/${id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
           }
         }
-      };
+      );
 
-      const email = response.data.payer?.email;
-      const nome = response.data.payer?.first_name;
+      const payer = response.data.payer || {};
+      const email = payer.email || null;
+      const nome = payer.first_name || 'Usuário MercadoPago';
 
       if (!email) {
-        console.warn('⚠️ Pagamento sem email de comprador.');
-        return res.sendStatus(400);
+        console.warn('⚠️ Email do comprador está vazio. Ignorando criação de usuário.');
+        return res.sendStatus(200);
       }
 
-      // Verifica se usuário já existe
       await admin.auth().getUserByEmail(email).catch(async (err) => {
         if (err.code === 'auth/user-not-found') {
-          await admin.auth().createUser({ email, displayName: nome || 'Assinante Ascenda Up' });
-          console.log(`✅ Usuário criado no Firebase: ${email}`);
+          await admin.auth().createUser({ email, displayName: nome });
         }
       });
 
-      // Grava no Firestore
       await admin.firestore().collection('usuarios').doc(email).set({
         ativo: true,
         plano: 'mensal',
@@ -61,19 +51,14 @@ app.post('/api/notificacoes', async (req, res) => {
         criado_em: new Date()
       });
 
-      console.log(`📌 Registro salvo no Firestore para: ${email}`);
-      return res.sendStatus(200);
+      console.log(`✅ Usuário ${email} inserido com sucesso no Firebase`);
+      res.sendStatus(200);
+    } else {
+      res.sendStatus(200);
     }
-
-    if (tipo === 'preapproval') {
-      console.log('📦 Notificação preapproval recebida, mas ainda não tratada.');
-      return res.sendStatus(200);
-    }
-
-    return res.sendStatus(200);
   } catch (err) {
-    console.error('❌ Erro no webhook:', err);
-    return res.sendStatus(500);
+    console.error('❌ Erro no webhook:', err.message);
+    res.sendStatus(500);
   }
 });
 
