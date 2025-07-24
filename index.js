@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import admin from 'firebase-admin';
-import axios from 'axios';
 
 const app = express();
 app.use(cors());
@@ -28,15 +27,15 @@ app.post('/api/notificacoes', async (req, res) => {
     }
 
     if (tipo === 'payment') {
-      // Consulta os dados do pagamento
-      const response = await axios.get(
-        `https://api.mercadopago.com/v1/payments/${id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+      // MOCK para testes sandbox — remove axios.get
+      const response = {
+        data: {
+          payer: {
+            email: `teste-${id}@ascendaup.com`,
+            first_name: `Usuário ${id}`
           }
         }
-      );
+      };
 
       const email = response.data.payer?.email;
       const nome = response.data.payer?.first_name;
@@ -66,7 +65,6 @@ app.post('/api/notificacoes', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Se quiser tratar notificação de assinatura:
     if (tipo === 'preapproval') {
       console.log('📦 Notificação preapproval recebida, mas ainda não tratada.');
       return res.sendStatus(200);
@@ -74,12 +72,11 @@ app.post('/api/notificacoes', async (req, res) => {
 
     return res.sendStatus(200);
   } catch (err) {
-    console.error('❌ Erro no webhook:', err.message);
+    console.error('❌ Erro no webhook:', err);
     return res.sendStatus(500);
   }
 });
 
-// Teste de rota GET
 app.get('/', (req, res) => {
   res.send('Ascenda Up Webhook online!');
 });
