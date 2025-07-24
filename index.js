@@ -1,71 +1,60 @@
 import express from 'express';
-import cors from 'cors';
+import bodyParser from 'body-parser';
 import admin from 'firebase-admin';
-import axios from 'axios';
+import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const port = process.env.PORT || 10000;
 
-admin.initializeApp({
-  credential: admin.credential.applicationDefault()
+app.use(cors());
+app.use(bodyParser.json());
+
+// Firebase Admin SDK
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+  });
+}
+const db = admin.firestore();
+
+// Rota de teste
+app.get('/', (req, res) => {
+  res.send('Servidor AscendaUP Webhook rodando 🚀');
 });
 
+// Webhook
 app.post('/api/notificacoes', async (req, res) => {
-  const body = req.body;
-
   try {
-    if (body.type === 'payment' || body.type === 'preapproval') {
-      const id = body.data.id;
+    console.log('🔔 Webhook recebido:');
+    console.log(JSON.stringify(req.body, null, 2));
 
-      // Tenta buscar o pagamento na API apenas se o ID for válido (simples verificação)
-      let email = 'teste@ascendaup.com.br';
-      let nome = 'Usuário de Teste';
+    const { action, type, data, user_id } = req.body;
 
-      try {
-        const response = await axios.get(
-          `https://api.mercadopago.com/v1/payments/${id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
-            }
-          }
-        );
-        email = response.data.payer.email;
-        nome = response.data.payer.first_name;
-      } catch (erroApi) {
-        console.log('⚠️ ID inválido ou não encontrado. Usando dados de teste.');
-      }
+    // Exemplo: assinatura aprovada
+    if (type === 'subscription_preapproval' && action === 'created') {
+      const preapproval_id = data.id;
 
-      await admin.auth().getUserByEmail(email).catch(async (err) => {
-        if (err.code === 'auth/user-not-found') {
-          await admin.auth().createUser({ email, displayName: nome });
-        }
+      await db.collection('assinaturas').doc(preapproval_id).set({
+        preapproval_id,
+        user_id,
+        status: 'ativa',
+        origem: 'webhook',
+        criado_em: new Date().toISOString(),
       });
 
-      await admin.firestore().collection('usuarios').doc(email).set({
-        ativo: true,
-        plano: 'mensal',
-        origem: 'MercadoPago (sandbox)',
-        criado_em: new Date()
-      });
-
-      console.log('✅ Webhook processado com sucesso.');
-      res.sendStatus(200);
-    } else {
-      res.sendStatus(200);
+      console.log(`✅ Assinatura salva: ${preapproval_id}`);
     }
-  } catch (err) {
-    console.error('Erro no webhook:', err.message);
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('❌ Erro no webhook:', error.message);
     res.sendStatus(500);
   }
 });
 
-app.get('/', (req, res) => {
-  res.send('Ascenda Up Webhook online!');
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+app.listen(port, () => {
+  console.log(`🚀 Servidor rodando na porta ${port}`);
 });
